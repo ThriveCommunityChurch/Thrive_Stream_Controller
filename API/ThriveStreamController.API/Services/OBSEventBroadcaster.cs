@@ -38,6 +38,7 @@ public class OBSEventBroadcaster : IHostedService
         _obsService.ConnectionStatusChanged += OnConnectionStatusChanged;
         _obsService.SceneChanged += OnSceneChanged;
         _obsService.StreamingStatusChanged += OnStreamingStatusChanged;
+        _obsService.VolumeMetersChanged += OnVolumeMetersChanged;
 
         _logger.LogInformation("OBS Event Broadcaster started");
         return Task.CompletedTask;
@@ -54,6 +55,7 @@ public class OBSEventBroadcaster : IHostedService
         _obsService.ConnectionStatusChanged -= OnConnectionStatusChanged;
         _obsService.SceneChanged -= OnSceneChanged;
         _obsService.StreamingStatusChanged -= OnStreamingStatusChanged;
+        _obsService.VolumeMetersChanged -= OnVolumeMetersChanged;
 
         _logger.LogInformation("OBS Event Broadcaster stopped");
         return Task.CompletedTask;
@@ -106,5 +108,29 @@ public class OBSEventBroadcaster : IHostedService
             _logger.LogError(ex, "Error broadcasting streaming status change");
         }
     }
+
+    /// <summary>
+    /// Handle OBS volume meters updates
+    /// </summary>
+    private async void OnVolumeMetersChanged(object? sender, InputVolumeMetersData volumeMeters)
+    {
+        try
+        {
+            // Log every 100th update to see what we're getting (events fire every 50ms)
+            if (volumeMeters.Inputs.Count > 0 && _eventCounter % 100 == 0)
+            {
+                _logger.LogDebug("Broadcasting volume meters: {InputCount} inputs - {Names}",
+                    volumeMeters.Inputs.Count,
+                    string.Join(", ", volumeMeters.Inputs.Select(i => i.InputName)));
+            }
+            await _hubContext.Clients.All.SendAsync("VolumeMetersChanged", volumeMeters);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error broadcasting volume meters change");
+        }
+    }
+
+    private int _eventCounter = 0;
 }
 

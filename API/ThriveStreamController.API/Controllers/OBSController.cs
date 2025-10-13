@@ -365,6 +365,75 @@ namespace ThriveStreamController.API.Controllers
                 return StatusCode(500, new { message = "Internal server error", error = ex.Message });
             }
         }
+
+        /// <summary>
+        /// Gets the status of the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>The virtual camera status.</returns>
+        [HttpGet("virtualcam/status")]
+        public async Task<ActionResult> GetVirtualCamStatus()
+        {
+            try
+            {
+                var isActive = await _obsService.GetVirtualCamStatusAsync();
+                return Ok(new { outputActive = isActive });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting virtual camera status from OBS");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Starts the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>Success status.</returns>
+        [HttpPost("virtualcam/start")]
+        public async Task<ActionResult> StartVirtualCam()
+        {
+            try
+            {
+                var success = await _obsService.StartVirtualCamAsync();
+
+                if (success)
+                {
+                    return Ok(new { message = "Virtual camera started successfully", success = true });
+                }
+
+                return BadRequest(new { message = "Failed to start virtual camera", success = false });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting virtual camera");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Stops the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>Success status.</returns>
+        [HttpPost("virtualcam/stop")]
+        public async Task<ActionResult> StopVirtualCam()
+        {
+            try
+            {
+                var success = await _obsService.StopVirtualCamAsync();
+
+                if (success)
+                {
+                    return Ok(new { message = "Virtual camera stopped successfully", success = true });
+                }
+
+                return BadRequest(new { message = "Failed to stop virtual camera", success = false });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error stopping virtual camera");
+                return StatusCode(500, new { message = "Internal server error", error = ex.Message });
+            }
+        }
     }
 
 }

@@ -83,7 +83,7 @@ namespace ThriveStreamController.Core.Services
                 }
             }
 
-            _logger.LogInformation("Media Status Tracker stopped");
+            _logger.LogDebug("Media Status Tracker stopped");
         }
 
         private async Task UpdateAllSceneMediaStatusAsync()

@@ -96,7 +96,6 @@ class SignalRService {
       return;
     }
 
-    console.log('[SignalR] Subscribing to ConnectionStatusChanged event');
     this.connection.on('ConnectionStatusChanged', (status: OBSConnectionStatus) => {
       console.log('[SignalR] Received ConnectionStatusChanged event:', status);
       callback(status);

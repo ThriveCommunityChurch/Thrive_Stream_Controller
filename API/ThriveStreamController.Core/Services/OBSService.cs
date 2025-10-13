@@ -18,6 +18,9 @@ namespace ThriveStreamController.Core.Services
         private readonly object _statusLock = new object();
         private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1);
         private bool _isConnecting = false;
+        private int _eventCounter = 0;
+        private readonly Dictionary<string, bool> _inputMuteStates = new Dictionary<string, bool>();
+        private readonly object _muteLock = new object();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="OBSService"/> class.
@@ -59,6 +62,11 @@ namespace ThriveStreamController.Core.Services
         /// Event raised when the streaming status changes in OBS.
         /// </summary>
         public event EventHandler<StreamingStatus>? StreamingStatusChanged;
+
+        /// <summary>
+        /// Event raised when audio volume meters are updated (every 50ms).
+        /// </summary>
+        public event EventHandler<InputVolumeMetersData>? VolumeMetersChanged;
 
         /// <summary>
         /// Connects to the OBS WebSocket server.
@@ -193,11 +201,8 @@ namespace ThriveStreamController.Core.Services
                     return [];
                 }
 
-                _logger.LogInformation("Fetching scenes from OBS...");
-
                 // Send GetSceneList request
                 var response = await _client.SendRequestAsync("GetSceneList");
-
                 if (response == null)
                 {
                     _logger.LogWarning("GetSceneList returned null");
@@ -253,7 +258,7 @@ namespace ThriveStreamController.Core.Services
                     }
                 }
 
-                _logger.LogInformation("Retrieved {Count} scenes from OBS", scenes.Count);
+                _logger.LogDebug("Retrieved {Count} scenes from OBS", scenes.Count);
                 return scenes;
             }
             catch (Exception ex)
@@ -459,6 +464,20 @@ namespace ThriveStreamController.Core.Services
         private void OnConnected(object? sender, EventArgs e)
         {
             _logger.LogInformation("OBS WebSocket connected event received");
+
+            // Query initial mute states for all inputs
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(500); // Small delay to ensure connection is fully established
+                    await QueryAllInputMuteStatesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to query initial input mute states");
+                }
+            });
         }
 
         private void OnDisconnected(object? sender, EventArgs e)
@@ -470,11 +489,18 @@ namespace ThriveStreamController.Core.Services
                 _connectionStatus.IsConnected = false;
             }
 
+            // Clear mute states on disconnect
+            lock (_muteLock)
+            {
+                _inputMuteStates.Clear();
+            }
+
             ConnectionStatusChanged?.Invoke(this, _connectionStatus);
         }
 
         private void OnEventReceived(object? sender, JObject eventData)
         {
+            _eventCounter++;
             var eventType = eventData["eventType"]?.Value<string>();
             _logger.LogDebug("Received OBS event: {EventType}", eventType);
 
@@ -497,6 +523,97 @@ namespace ThriveStreamController.Core.Services
                         StreamDurationSeconds = 0
                     });
                     break;
+
+                case "InputMuteStateChanged":
+                    var mutedInputName = eventData["eventData"]?["inputName"]?.Value<string>();
+                    var mutedInputUuid = eventData["eventData"]?["inputUuid"]?.Value<string>();
+                    var inputMuted = eventData["eventData"]?["inputMuted"]?.Value<bool>() ?? false;
+
+                    if (!string.IsNullOrEmpty(mutedInputUuid))
+                    {
+                        lock (_muteLock)
+                        {
+                            _inputMuteStates[mutedInputUuid] = inputMuted;
+                        }
+                        _logger.LogDebug("Input mute state changed: {InputName} ({InputUuid}) = {Muted}",
+                            mutedInputName, mutedInputUuid, inputMuted);
+                    }
+                    break;
+
+                case "InputVolumeMeters":
+                    var inputsArray = eventData["eventData"]?["inputs"] as JArray;
+
+                    // Log every 100th event to avoid spam (events fire every 50ms)
+                    if (_eventCounter % 100 == 0)
+                    {
+                        _logger.LogDebug("InputVolumeMeters event received. Inputs count: {Count}", inputsArray?.Count ?? 0);
+                        if (inputsArray != null && inputsArray.Count > 0)
+                        {
+                            _logger.LogDebug("Input names: {Names}", string.Join(", ", inputsArray.Select(i => i["inputName"]?.Value<string>() ?? "unknown")));
+                        }
+                    }
+
+                    if (inputsArray != null)
+                    {
+                        var volumeMetersData = new InputVolumeMetersData();
+                        foreach (var inputToken in inputsArray)
+                        {
+                            var inputObj = inputToken as JObject;
+                            if (inputObj == null) continue;
+
+                            var inputName = inputObj["inputName"]?.Value<string>();
+                            var inputUuid = inputObj["inputUuid"]?.Value<string>();
+                            var levelsArray = inputObj["inputLevelsMul"] as JArray;
+
+                            if (!string.IsNullOrEmpty(inputName) && levelsArray != null)
+                            {
+                                // inputLevelsMul is a 2D array: [[channel1_peak, channel1_magnitude, channel1_input_peak], [channel2_peak, ...]]
+                                // We'll extract the peak value (index 2) from each channel
+                                var channelLevels = new List<double>();
+                                foreach (var channelToken in levelsArray)
+                                {
+                                    var channelArray = channelToken as JArray;
+                                    if (channelArray != null && channelArray.Count >= 3)
+                                    {
+                                        // Use the input peak value (index 2) which represents the peak level
+                                        channelLevels.Add(channelArray[2].Value<double>());
+                                    }
+                                }
+
+                                if (channelLevels.Count > 0)
+                                {
+                                    // Get mute state for this input
+                                    bool isMuted = false;
+                                    if (!string.IsNullOrEmpty(inputUuid))
+                                    {
+                                        lock (_muteLock)
+                                        {
+                                            _inputMuteStates.TryGetValue(inputUuid, out isMuted);
+                                        }
+                                    }
+
+                                    // Only include non-muted sources
+                                    if (!isMuted)
+                                    {
+                                        var volumeMeter = new InputVolumeMeter
+                                        {
+                                            InputName = inputName,
+                                            InputUuid = inputUuid ?? string.Empty,
+                                            InputLevelsMul = channelLevels,
+                                            InputMuted = isMuted
+                                        };
+                                        volumeMetersData.Inputs.Add(volumeMeter);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (volumeMetersData.Inputs.Count > 0)
+                        {
+                            VolumeMetersChanged?.Invoke(this, volumeMetersData);
+                        }
+                    }
+                    break;
             }
         }
 
@@ -515,7 +632,7 @@ namespace ThriveStreamController.Core.Services
                     return new List<SceneItem>();
                 }
 
-                _logger.LogInformation("Getting scene items for scene: {SceneName}", sceneName);
+                _logger.LogDebug("Getting scene items for scene: {SceneName}", sceneName);
 
                 var requestData = new JObject
                 {
@@ -565,7 +682,7 @@ namespace ThriveStreamController.Core.Services
                     sceneItems.Add(sceneItem);
                 }
 
-                _logger.LogInformation("Found {Count} scene items", sceneItems.Count);
+                _logger.LogDebug("Found {Count} scene items", sceneItems.Count);
                 return sceneItems;
             }
             catch (Exception ex)
@@ -590,7 +707,7 @@ namespace ThriveStreamController.Core.Services
                     return null;
                 }
 
-                _logger.LogInformation("Getting media input status for: {InputName}", inputName);
+                _logger.LogDebug("Getting media input status for: {InputName}", inputName);
 
                 var requestData = new JObject
                 {
@@ -631,7 +748,7 @@ namespace ThriveStreamController.Core.Services
                     MediaCursor = responseData["mediaCursor"]?.Value<long?>()
                 };
 
-                _logger.LogInformation("Media status: State={State}, Duration={Duration}ms, Cursor={Cursor}ms",
+                _logger.LogDebug("Media status: State={State}, Duration={Duration}ms, Cursor={Cursor}ms",
                     mediaStatus.MediaState, mediaStatus.MediaDuration, mediaStatus.MediaCursor);
 
                 return mediaStatus;
@@ -640,6 +757,247 @@ namespace ThriveStreamController.Core.Services
             {
                 _logger.LogError(ex, "Error getting media input status: {Message}", ex.Message);
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Gets the status of the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>True if the virtual camera is active, false otherwise.</returns>
+        public async Task<bool> GetVirtualCamStatusAsync()
+        {
+            try
+            {
+                if (!_client.IsConnected)
+                {
+                    _logger.LogWarning("Cannot get virtual camera status: Not connected to OBS");
+                    return false;
+                }
+
+                var response = await _client.SendRequestAsync("GetVirtualCamStatus");
+
+                if (response == null)
+                {
+                    _logger.LogWarning("GetVirtualCamStatus returned null");
+                    return false;
+                }
+
+                var requestStatus = response["requestStatus"] as JObject;
+                var result = requestStatus?["result"]?.Value<bool>() ?? false;
+
+                if (!result)
+                {
+                    var code = requestStatus?["code"]?.Value<int>() ?? 0;
+                    var comment = requestStatus?["comment"]?.Value<string>();
+                    _logger.LogWarning("GetVirtualCamStatus failed: Code={Code}, Comment={Comment}", code, comment);
+                    return false;
+                }
+
+                var responseData = response["responseData"] as JObject;
+                var outputActive = responseData?["outputActive"]?.Value<bool>() ?? false;
+
+                _logger.LogDebug("Virtual camera status: {Status}", outputActive ? "Active" : "Inactive");
+                return outputActive;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting virtual camera status: {Message}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Starts the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>True if successful, false otherwise.</returns>
+        public async Task<bool> StartVirtualCamAsync()
+        {
+            try
+            {
+                if (!_client.IsConnected)
+                {
+                    _logger.LogWarning("Cannot start virtual camera: Not connected to OBS");
+                    return false;
+                }
+
+                _logger.LogInformation("Starting OBS Virtual Camera...");
+
+                var response = await _client.SendRequestAsync("StartVirtualCam");
+
+                if (response == null)
+                {
+                    _logger.LogWarning("StartVirtualCam returned null");
+                    return false;
+                }
+
+                var requestStatus = response["requestStatus"] as JObject;
+                var result = requestStatus?["result"]?.Value<bool>() ?? false;
+
+                if (result)
+                {
+                    _logger.LogInformation("Successfully started OBS Virtual Camera");
+                }
+                else
+                {
+                    var code = requestStatus?["code"]?.Value<int>() ?? 0;
+                    var comment = requestStatus?["comment"]?.Value<string>();
+                    _logger.LogWarning("StartVirtualCam failed: Code={Code}, Comment={Comment}", code, comment);
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error starting virtual camera: {Message}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Stops the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>True if successful, false otherwise.</returns>
+        public async Task<bool> StopVirtualCamAsync()
+        {
+            try
+            {
+                if (!_client.IsConnected)
+                {
+                    _logger.LogWarning("Cannot stop virtual camera: Not connected to OBS");
+                    return false;
+                }
+
+                _logger.LogInformation("Stopping OBS Virtual Camera...");
+
+                var response = await _client.SendRequestAsync("StopVirtualCam");
+
+                if (response == null)
+                {
+                    _logger.LogWarning("StopVirtualCam returned null");
+                    return false;
+                }
+
+                var requestStatus = response["requestStatus"] as JObject;
+                var result = requestStatus?["result"]?.Value<bool>() ?? false;
+
+                if (result)
+                {
+                    _logger.LogInformation("Successfully stopped OBS Virtual Camera");
+                }
+                else
+                {
+                    var code = requestStatus?["code"]?.Value<int>() ?? 0;
+                    var comment = requestStatus?["comment"]?.Value<string>();
+                    _logger.LogWarning("StopVirtualCam failed: Code={Code}, Comment={Comment}", code, comment);
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error stopping virtual camera: {Message}", ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Queries the mute state for all inputs and populates the _inputMuteStates dictionary
+        /// </summary>
+        private async Task QueryAllInputMuteStatesAsync()
+        {
+            try
+            {
+                if (!_client.IsConnected)
+                {
+                    _logger.LogWarning("Cannot query input mute states: Not connected to OBS");
+                    return;
+                }
+
+                _logger.LogInformation("Querying initial mute states for all inputs");
+
+                // First, get the list of all inputs
+                var response = await _client.SendRequestAsync("GetInputList", null);
+
+                if (response == null)
+                {
+                    _logger.LogWarning("GetInputList returned null");
+                    return;
+                }
+
+                var requestStatus = response["requestStatus"] as JObject;
+                var result = requestStatus?["result"]?.Value<bool>() ?? false;
+
+                if (!result)
+                {
+                    var code = requestStatus?["code"]?.Value<int>() ?? 0;
+                    var comment = requestStatus?["comment"]?.Value<string>();
+                    _logger.LogWarning("GetInputList failed: Code={Code}, Comment={Comment}", code, comment);
+                    return;
+                }
+
+                var responseData = response["responseData"] as JObject;
+                var inputsArray = responseData?["inputs"] as JArray;
+
+                if (inputsArray == null || inputsArray.Count == 0)
+                {
+                    _logger.LogInformation("No inputs found");
+                    return;
+                }
+
+                _logger.LogInformation("Found {Count} inputs, querying mute states", inputsArray.Count);
+
+                // Query mute state for each input
+                foreach (var inputToken in inputsArray)
+                {
+                    var inputObj = inputToken as JObject;
+                    if (inputObj == null) continue;
+
+                    var inputUuid = inputObj["inputUuid"]?.Value<string>();
+                    var inputName = inputObj["inputName"]?.Value<string>();
+
+                    if (string.IsNullOrEmpty(inputUuid)) continue;
+
+                    try
+                    {
+                        // Query the mute state for this input
+                        var requestData = new JObject
+                        {
+                            ["inputUuid"] = inputUuid
+                        };
+                        var muteResponse = await _client.SendRequestAsync("GetInputMute", requestData);
+
+                        if (muteResponse != null)
+                        {
+                            var muteRequestStatus = muteResponse["requestStatus"] as JObject;
+                            var muteResult = muteRequestStatus?["result"]?.Value<bool>() ?? false;
+
+                            if (muteResult)
+                            {
+                                var muteResponseData = muteResponse["responseData"] as JObject;
+                                var inputMuted = muteResponseData?["inputMuted"]?.Value<bool>() ?? false;
+
+                                lock (_muteLock)
+                                {
+                                    _inputMuteStates[inputUuid] = inputMuted;
+                                }
+
+                                _logger.LogDebug("Initial mute state for {InputName} ({InputUuid}): {Muted}",
+                                    inputName, inputUuid, inputMuted);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to query mute state for input {InputName} ({InputUuid})",
+                            inputName, inputUuid);
+                    }
+                }
+
+                _logger.LogInformation("Completed querying initial mute states for {Count} inputs", inputsArray.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error querying all input mute states: {Message}", ex.Message);
             }
         }
 

@@ -203,3 +203,5 @@ lib-cov
 *.db-wal
 *.db-shm
 *.user
+
+*.http

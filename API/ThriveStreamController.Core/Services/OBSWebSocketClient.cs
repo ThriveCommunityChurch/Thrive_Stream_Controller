@@ -168,7 +168,7 @@ namespace ThriveStreamController.Core.Services
                     }
                 };
 
-                _logger.LogInformation("Sending request: {RequestType} (ID: {RequestId})", requestType, requestId);
+                _logger.LogDebug("Sending request: {RequestType} (ID: {RequestId})", requestType, requestId);
 
                 // Send request
                 await SendMessageAsync(request);
@@ -270,7 +270,7 @@ namespace ThriveStreamController.Core.Services
                 var message = JObject.Parse(messageJson);
                 var opCode = message["op"]?.Value<int>() ?? -1;
 
-                _logger.LogInformation("Received message with OpCode: {OpCode}", opCode);
+                _logger.LogDebug("Received message with OpCode: {OpCode}", opCode);
 
                 switch (opCode)
                 {
@@ -324,10 +324,12 @@ namespace ThriveStreamController.Core.Services
             // Vendors (1 << 9) = 512
             // Ui (1 << 10) = 1024
             // All = 2047 (sum of all above)
+            // InputVolumeMeters (1 << 16) = 65536 (high-volume event for audio levels)
+            var eventSubscriptions = 2047 + 65536; // Subscribe to all events including InputVolumeMeters
             var identifyData = new JObject
             {
                 ["rpcVersion"] = rpcVersion,
-                ["eventSubscriptions"] = 2047 // Subscribe to all non-high-volume events
+                ["eventSubscriptions"] = eventSubscriptions
             };
 
             // Handle authentication if required
@@ -389,7 +391,7 @@ namespace ThriveStreamController.Core.Services
             if (data == null) return;
 
             var eventType = data["eventType"]?.Value<string>();
-            _logger.LogInformation("Received event: {EventType}", eventType);
+            _logger.LogDebug("Received event: {EventType}", eventType);
 
             EventReceived?.Invoke(this, data);
         }
@@ -405,7 +407,7 @@ namespace ThriveStreamController.Core.Services
             var result = requestStatus?["result"]?.Value<bool>() ?? false;
             var code = requestStatus?["code"]?.Value<int>() ?? 0;
 
-            _logger.LogInformation("Received response for request {RequestId}: Result={Result}, Code={Code}", requestId, result, code);
+            _logger.LogDebug("Received response for request {RequestId}: Result={Result}, Code={Code}", requestId, result, code);
 
             // Find and complete the pending request
             TaskCompletionSource<JObject>? tcs = null;

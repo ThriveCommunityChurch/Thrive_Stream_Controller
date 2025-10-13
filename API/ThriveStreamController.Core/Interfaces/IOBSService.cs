@@ -29,6 +29,11 @@ namespace ThriveStreamController.Core.Interfaces
         event EventHandler<StreamingStatus>? StreamingStatusChanged;
 
         /// <summary>
+        /// Event raised when audio volume meters are updated (every 50ms).
+        /// </summary>
+        event EventHandler<InputVolumeMetersData>? VolumeMetersChanged;
+
+        /// <summary>
         /// Connects to the OBS WebSocket server.
         /// </summary>
         /// <param name="url">The WebSocket server URL (e.g., "ws://localhost:4455").</param>
@@ -92,6 +97,24 @@ namespace ThriveStreamController.Core.Interfaces
         /// <param name="inputName">The name of the media input.</param>
         /// <returns>A task that represents the asynchronous operation. The task result contains the media input status.</returns>
         Task<MediaInputStatus?> GetMediaInputStatusAsync(string inputName);
+
+        /// <summary>
+        /// Gets the status of the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>A task that represents the asynchronous operation. Returns true if the virtual camera is active.</returns>
+        Task<bool> GetVirtualCamStatusAsync();
+
+        /// <summary>
+        /// Starts the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>A task that represents the asynchronous operation. Returns true if successful.</returns>
+        Task<bool> StartVirtualCamAsync();
+
+        /// <summary>
+        /// Stops the OBS Virtual Camera.
+        /// </summary>
+        /// <returns>A task that represents the asynchronous operation. Returns true if successful.</returns>
+        Task<bool> StopVirtualCamAsync();
     }
 }
 

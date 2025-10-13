@@ -106,6 +106,28 @@ class ApiService {
       const response = await this.axiosInstance.get<MediaInputStatus>(`/OBS/media/${encodeURIComponent(inputName)}/status`);
       return response.data;
     },
+
+    /**
+     * Get virtual camera status
+     */
+    getVirtualCamStatus: async (): Promise<{ outputActive: boolean }> => {
+      const response = await this.axiosInstance.get<{ outputActive: boolean }>('/OBS/virtualcam/status');
+      return response.data;
+    },
+
+    /**
+     * Start virtual camera
+     */
+    startVirtualCam: async (): Promise<void> => {
+      await this.axiosInstance.post('/OBS/virtualcam/start');
+    },
+
+    /**
+     * Stop virtual camera
+     */
+    stopVirtualCam: async (): Promise<void> => {
+      await this.axiosInstance.post('/OBS/virtualcam/stop');
+    },
   };
 }
 

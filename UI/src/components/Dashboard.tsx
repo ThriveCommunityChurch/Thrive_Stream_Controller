@@ -2,8 +2,11 @@ import { useEffect, useState, useCallback } from 'react';
 import { ConnectionStatus } from './ConnectionStatus';
 import { SceneSwitcher } from './SceneSwitcher';
 import { ControlsMenu } from './ControlsMenu';
+import { VideoPreview } from './VideoPreview';
+import { AudioMeters } from './AudioMeters';
 import { useSignalR } from '@/hooks/useSignalR';
 import { useOBSConnection } from '@/hooks/useOBSConnection';
+import { useAudioMeterSettings } from '@/hooks/useAudioMeterSettings';
 import { apiService } from '@/services/api.service';
 import { SignalRConnectionState } from '@/types/obs';
 
@@ -13,6 +16,7 @@ import { SignalRConnectionState } from '@/types/obs';
 export const Dashboard: React.FC = () => {
   const { connectionState, isConnected: isSignalRConnected } = useSignalR();
   const { obsStatus, currentScene } = useOBSConnection();
+  const { settings: audioMeterSettings, updateSettings: updateAudioMeterSettings } = useAudioMeterSettings();
   const [autoConnecting, setAutoConnecting] = useState<boolean>(false);
   const [autoConnectError, setAutoConnectError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -91,6 +95,8 @@ export const Dashboard: React.FC = () => {
               onConnect={handleManualConnect}
               onDisconnect={handleDisconnect}
               onRefreshScenes={handleRefreshScenes}
+              audioMeterSettings={audioMeterSettings}
+              onAudioMeterSettingsChange={updateAudioMeterSettings}
             />
             <div>
               <h1 className="text-4xl font-bold text-gray-800 mb-2">
@@ -123,7 +129,24 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Video Preview and Audio Meters Row */}
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Video Preview - Takes 2 columns */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Program Out</h2>
+              <VideoPreview isOBSConnected={obsStatus.IsConnected} />
+            </div>
+          </div>
 
+          {/* Audio Meters - Takes 1 column */}
+          <div className="lg:col-span-1">
+            <AudioMeters
+              isOBSConnected={obsStatus.IsConnected}
+              settings={audioMeterSettings}
+            />
+          </div>
+        </div>
 
         {/* Scene Switcher */}
         <div className="mb-6">
