@@ -1,9 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { ConnectionStatus } from './ConnectionStatus';
 import { SceneSwitcher } from './SceneSwitcher';
 import { ControlsMenu } from './ControlsMenu';
 import { VideoPreview } from './VideoPreview';
 import { AudioMeters } from './AudioMeters';
+import { StreamingControls } from './StreamingControls';
 import { useSignalR } from '@/hooks/useSignalR';
 import { useOBSConnection } from '@/hooks/useOBSConnection';
 import { useAudioMeterSettings } from '@/hooks/useAudioMeterSettings';
@@ -20,6 +22,21 @@ export const Dashboard: React.FC = () => {
   const [autoConnecting, setAutoConnecting] = useState<boolean>(false);
   const [autoConnectError, setAutoConnectError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState<number>(0);
+  const [isYouTubeConfigured, setIsYouTubeConfigured] = useState<boolean>(false);
+
+  // Check YouTube configuration status
+  useEffect(() => {
+    const checkYouTubeStatus = async () => {
+      try {
+        const status = await apiService.youtubeAuthAPI.getStatus();
+        setIsYouTubeConfigured(status.IsConfigured);
+      } catch {
+        setIsYouTubeConfigured(false);
+      }
+    };
+
+    checkYouTubeStatus();
+  }, []);
 
   // Auto-connect to OBS when SignalR is connected
   // Add a small delay to ensure SignalR connection is fully established
@@ -103,14 +120,22 @@ export const Dashboard: React.FC = () => {
                 Thrive Stream Controller
               </h1>
               <p className="text-gray-600">
-                Manage your OBS Studio livestreams with ease
+                Manage your livestreams with ease
               </p>
             </div>
           </div>
-          <ConnectionStatus
-            signalRState={connectionState}
-            obsStatus={obsStatus}
-          />
+          <div className="flex items-center space-x-4">
+            <Link
+              to="/settings"
+              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            >
+              ⚙️ Configure Accounts
+            </Link>
+            <ConnectionStatus
+              signalRState={connectionState}
+              obsStatus={obsStatus}
+            />
+          </div>
         </div>
 
         {/* Auto-connect error message */}
@@ -148,13 +173,24 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Scene Switcher */}
-        <div className="mb-6">
-          <SceneSwitcher
-            currentScene={currentScene}
-            isOBSConnected={obsStatus.IsConnected}
-            refreshKey={refreshKey}
-          />
+        {/* Streaming Controls and Scene Switcher Row */}
+        <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Streaming Controls - Takes 1 column */}
+          <div className="lg:col-span-1">
+            <StreamingControls
+              isOBSConnected={obsStatus.IsConnected}
+              isYouTubeConfigured={isYouTubeConfigured}
+            />
+          </div>
+
+          {/* Scene Switcher - Takes 2 columns */}
+          <div className="lg:col-span-2">
+            <SceneSwitcher
+              currentScene={currentScene}
+              isOBSConnected={obsStatus.IsConnected}
+              refreshKey={refreshKey}
+            />
+          </div>
         </div>
 
         {/* Footer */}

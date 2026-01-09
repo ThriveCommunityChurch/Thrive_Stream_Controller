@@ -1,5 +1,5 @@
 import * as signalR from '@microsoft/signalr';
-import type { OBSConnectionStatus, Scene } from '@/types/obs';
+import type { OBSConnectionStatus } from '@/types/obs';
 
 /**
  * SignalR service for real-time communication with the backend

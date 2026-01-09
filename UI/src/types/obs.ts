@@ -73,11 +73,13 @@ export interface SceneMediaStatus {
 /**
  * SignalR connection state
  */
-export enum SignalRConnectionState {
-  Disconnected = 'Disconnected',
-  Connecting = 'Connecting',
-  Connected = 'Connected',
-  Reconnecting = 'Reconnecting',
-  Disconnecting = 'Disconnecting',
-}
+export const SignalRConnectionState = {
+  Disconnected: 'Disconnected',
+  Connecting: 'Connecting',
+  Connected: 'Connected',
+  Reconnecting: 'Reconnecting',
+  Disconnecting: 'Disconnecting',
+} as const;
+
+export type SignalRConnectionState = typeof SignalRConnectionState[keyof typeof SignalRConnectionState];
 

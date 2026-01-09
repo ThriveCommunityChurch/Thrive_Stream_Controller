@@ -3,6 +3,7 @@ using Serilog;
 using ThriveStreamController.API.Hubs;
 using ThriveStreamController.API.Services;
 using ThriveStreamController.Core.Interfaces;
+using ThriveStreamController.Core.Models;
 using ThriveStreamController.Core.Services;
 using ThriveStreamController.Data;
 
@@ -58,7 +59,14 @@ try
     builder.Services.AddDbContext<ApplicationDbContext>(options =>
         options.UseSqlite(connectionString));
 
+    // Configure YouTube
+    builder.Services.Configure<YouTubeConfiguration>(
+        builder.Configuration.GetSection("YouTube"));
+
     // Register application services
+    builder.Services.AddSingleton<ICredentialEncryptionService, CredentialEncryptionService>();
+    builder.Services.AddScoped<IYouTubeAuthService, YouTubeAuthService>();
+    builder.Services.AddScoped<IYouTubeLiveService, YouTubeLiveService>();
     builder.Services.AddSingleton<IOBSService, OBSService>();
     builder.Services.AddHostedService<OBSEventBroadcaster>();
 
