@@ -24,6 +24,16 @@ namespace ThriveStreamController.Data
         public DbSet<StreamSession> StreamSessions { get; set; }
 
         /// <summary>
+        /// Gets or sets the DbSet for PlatformCredential entities.
+        /// </summary>
+        public DbSet<PlatformCredential> PlatformCredentials { get; set; }
+
+        /// <summary>
+        /// Gets or sets the DbSet for PersistentStreamConfig entities.
+        /// </summary>
+        public DbSet<PersistentStreamConfig> PersistentStreamConfigs { get; set; }
+
+        /// <summary>
         /// Configures the entity models and their relationships.
         /// </summary>
         /// <param name="modelBuilder">The builder being used to construct the model for this context.</param>
