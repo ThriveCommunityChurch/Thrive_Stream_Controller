@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vs
+.vscode
+.idea
+*.user
+*.suo
+
+# Build outputs
+**/bin
+**/obj
+**/dist
+**/node_modules
+
+# Test outputs
+**/TestResults
+**/coverage
+
+# Docker data (don't include local data in builds)
+docker-data
+docker-logs
+
+# Documentation
+*.md
+!README.md
+
+# Misc
+*.log
+.DS_Store
+Thumbs.db
+
+# Facebook Automation (not needed for main app)
+FacebookAutomation
+
+# CDP Test App (not needed for main app)
+CDPTestApp
+
