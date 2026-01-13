@@ -34,6 +34,7 @@ COPY API/ThriveStreamController.sln ./
 COPY API/ThriveStreamController.API/ThriveStreamController.API.csproj ./ThriveStreamController.API/
 COPY API/ThriveStreamController.Core/ThriveStreamController.Core.csproj ./ThriveStreamController.Core/
 COPY API/ThriveStreamController.Data/ThriveStreamController.Data.csproj ./ThriveStreamController.Data/
+COPY API/ThriveStreamController.Tests/ThriveStreamController.Tests.csproj ./ThriveStreamController.Tests/
 
 # Restore dependencies
 RUN dotnet restore
