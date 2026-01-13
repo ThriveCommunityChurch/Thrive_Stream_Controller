@@ -88,10 +88,18 @@ try
 
     app.UseCors("AllowReactApp");
 
+    // Serve static files (React UI in production)
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+
     app.UseAuthorization();
 
     app.MapControllers();
     app.MapHub<OBSHub>("/hubs/obs");
+
+    // SPA fallback - serve index.html for client-side routing
+    // Must be after MapControllers and MapHub so API routes take precedence
+    app.MapFallbackToFile("index.html");
 
     // Ensure database is created
     using (var scope = app.Services.CreateScope())
