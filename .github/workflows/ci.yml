@@ -30,13 +30,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload UI build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-dist
-          path: UI/dist
-          retention-days: 1
-
   build-api:
     name: Build & Test API
     runs-on: ubuntu-latest
@@ -80,4 +73,6 @@ jobs:
           tags: thrive-stream-controller:ci-test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
 
